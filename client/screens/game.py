@@ -3,10 +3,29 @@ import sys
 import os
 import time
 
+from client.game.fruits import (
+    draw_watermelon_half, draw_apple_half,
+    draw_orange_half, draw_pineapple_half,
+    draw_banana_half
+)
+
+HALF_MAP = {
+    "WATERMELON": draw_watermelon_half,
+    "APPLE":      draw_apple_half,
+    "ORANGE":     draw_orange_half,
+    "PINEAPPLE":  draw_pineapple_half,
+    "BANANA":     draw_banana_half,
+}
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from shared.protocol import *
-from client.game.fruits    import draw_fruit
+from client.game.fruits    import (
+    draw_fruit,
+    draw_watermelon_half, draw_apple_half,
+    draw_orange_half, draw_pineapple_half,
+    draw_banana_half
+)
 from client.game.items     import draw_item
 from client.game.blade     import BladeTrail, draw_cursor
 from client.game.particles import ParticleSystem, get_fruit_color
@@ -41,6 +60,36 @@ SHAKE_DECAY    = 0.85
 SHAKE_DURATION = 15   # frames
 
 
+class SlicedHalf:
+    def __init__(self, item_type, x, y, direction):
+        self.type      = item_type
+        self.x         = float(x)
+        self.y         = float(y)
+        self.vx        = 4.0 * direction  # left=-1, right=1
+        self.vy        = -3.0
+        self.gravity   = 0.3
+        self.lifetime  = 40  # frames
+        self.direction = direction
+
+    def update(self):
+        self.vy       += self.gravity
+        self.x        += self.vx
+        self.y        += self.vy
+        self.lifetime -= 1
+
+    def is_dead(self):
+        return self.lifetime <= 0
+
+
+HALF_MAP = {
+    "WATERMELON": draw_watermelon_half,
+    "APPLE":      draw_apple_half,
+    "ORANGE":     draw_orange_half,
+    "PINEAPPLE":  draw_pineapple_half,
+    "BANANA":     draw_banana_half,
+}
+
+
 class GameScreen:
     def __init__(self, screen, net, username, mode, input_handler):
         """
@@ -71,6 +120,7 @@ class GameScreen:
         self.hud           = HUD()
         self.combo         = 1
         self.combo_timer   = 0
+        self.sliced_halves = []
 
         # Screen shake state (triggered by mega bomb)
         self.shake_frames  = 0
@@ -79,6 +129,8 @@ class GameScreen:
         # Track which items were alive last frame
         # so we can trigger particles when one disappears
         self.prev_item_ids = set()
+        self.prev_items_by_id = {}
+        self.sliced_halves = []
 
         # Result — set when game ends
         self.result        = None
@@ -104,16 +156,24 @@ class GameScreen:
         self.game_state = payload
 
         # Detect newly sliced items by comparing item ids
-        current_ids = {i["id"] for i in payload.get("items", [])}
+        current_items = payload.get("items", [])
+        current_ids = {i["id"] for i in current_items}
         sliced_ids  = self.prev_item_ids - current_ids
 
-        for item in payload.get("items", []):
-            if item["id"] in sliced_ids and not item.get("alive", True):
+        for item_id in sliced_ids:
+            item = self.prev_items_by_id.get(item_id)
+            if item:
                 # Item was just sliced — spawn particles
                 color = get_fruit_color(item["type"])
                 self.particles.emit(
                     int(item["x"]), int(item["y"]),
                     color, count=14
+                )
+                self.sliced_halves.append(
+                    SlicedHalf(item["type"], item["x"], item["y"], -1)
+                )
+                self.sliced_halves.append(
+                    SlicedHalf(item["type"], item["x"], item["y"],  1)
                 )
                 # Update combo
                 self.combo      += 1
@@ -123,7 +183,8 @@ class GameScreen:
                 if item["type"] == ITEM_MEGA_BOMB:
                     self.shake_frames = SHAKE_DURATION
 
-        self.prev_item_ids = {i["id"] for i in payload.get("items", [])}
+        self.prev_item_ids = current_ids
+        self.prev_items_by_id = {i["id"]: i for i in current_items}
 
     def _on_game_over(self, payload: dict, server_time: int):
         """Game ended — store result and stop loop."""
@@ -175,6 +236,7 @@ class GameScreen:
             # ── Send to server ──────────────────
             if self.net and self.net.connected:
                 self.net.send_finger(nx, ny, gesture)
+            self.game_state["gesture"] = gesture
 
             # ── Update local visuals ────────────
             self.blade.update(px, py)
@@ -226,6 +288,24 @@ class GameScreen:
                     draw_fruit(self.screen, shifted)
 
         # ── Draw opponent finger (versus mode) ──
+        for half in self.sliced_halves:
+            half.update()
+
+        for half in self.sliced_halves:
+            fn = HALF_MAP.get(half.type)
+            if fn:
+                fn(
+                    self.screen,
+                    int(half.x), int(half.y),
+                    30,
+                    "left" if half.direction < 0 else "right"
+                )
+
+        self.sliced_halves = [
+            half for half in self.sliced_halves
+            if not half.is_dead()
+        ]
+
         if self.mode == MODE_VERSUS:
             fingers = self.game_state.get("fingers", {})
             for uname, fdata in fingers.items():
@@ -256,6 +336,16 @@ class GameScreen:
         # ── Draw combo ─────────────────────────
         if self.combo > 1:
             draw_combo(self.screen, self.combo)
+
+       
+        for half in self.sliced_halves:
+            half.update()
+            fn = HALF_MAP.get(half.type)
+            if fn:
+                fn(self.screen, int(half.x), int(half.y),
+                   30, "left" if half.direction < 0 else "right")
+        self.sliced_halves = [h for h in self.sliced_halves
+                              if not h.is_dead()]
 
         pygame.display.flip()
 

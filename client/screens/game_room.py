@@ -146,7 +146,8 @@ class GameRoomScreen:
         self.chat_messages = self.chat_messages[-6:]
 
     def _on_game_start(self, payload, server_time):
-        self.return_mode = self.mode
+        if not isinstance(payload, dict) or payload.get("phase") == "match":
+            self.return_mode = self.mode
 
     def _send_mode_select(self, mode):
         self.mode = mode

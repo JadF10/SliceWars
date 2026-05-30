@@ -15,6 +15,7 @@ MSG_MODE_SELECT    = "MODE_SELECT"     # solo / coop / versus
 MSG_FINGER         = "FINGER"          # finger position + gesture (30/sec)
 MSG_PING           = "PING"            # latency check sent by client
 MSG_SPECTATE       = "SPECTATE"        # request to spectate a room
+MSG_SOLO_START     = "SOLO_START"
 
 # ─────────────────────────────────────────────
 #  Message types  (server → client)
@@ -130,6 +131,9 @@ def msg_invite_reply(from_user: str, to_user: str, accepted: bool) -> str:
     return build_message(MSG_INVITE_REPLY, {
         "from": from_user, "to": to_user, "accepted": accepted
     })
+
+def msg_ready() -> str:
+    return build_message(MSG_READY, {})
 
 def msg_finger(x: float, y: float, gesture: str) -> str:
     return build_message(MSG_FINGER, {"x": x, "y": y, "gesture": gesture})

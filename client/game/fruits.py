@@ -267,47 +267,35 @@ def draw_banana_half(surface, x, y, radius, side):
         pygame.draw.lines(surface, (255, 220, 50), False, points, 8)
 
 
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))))
+from shared.protocol import (
+    ITEM_WATERMELON, ITEM_APPLE, ITEM_ORANGE,
+    ITEM_PINEAPPLE, ITEM_BANANA
+)
+
+FRUIT_DRAW_MAP = {
+    ITEM_WATERMELON : draw_watermelon,
+    ITEM_APPLE      : draw_apple,
+    ITEM_ORANGE     : draw_orange,
+    ITEM_PINEAPPLE  : draw_pineapple,
+    ITEM_BANANA     : draw_banana,
+    "WATERMELON"    : draw_watermelon,
+    "APPLE"         : draw_apple,
+    "ORANGE"        : draw_orange,
+    "PINEAPPLE"     : draw_pineapple,
+    "BANANA"        : draw_banana,
+}
+
 def draw_fruit(surface, fruit_dict):
-    """
-    Draw a fruit based on its type and position.
-    
-    fruit_dict must have:
-      - "type": one of "watermelon", "apple", "orange", "pineapple", "banana"
-      - "x": x coordinate
-      - "y": y coordinate
-      - "radius": radius of fruit
-      - "sliced" (optional): boolean, if True draw halves instead
-      - "side" (optional): "left" or "right" if sliced
-    """
-    x = fruit_dict.get("x", 0)
-    y = fruit_dict.get("y", 0)
-    radius = fruit_dict.get("radius", 30)
-    fruit_type = fruit_dict.get("type", "watermelon")
-    sliced = fruit_dict.get("sliced", False)
-    side = fruit_dict.get("side", "left")
-    
-    if sliced:
-        if fruit_type == "watermelon":
-            draw_watermelon_half(surface, x, y, radius, side)
-        elif fruit_type == "apple":
-            draw_apple_half(surface, x, y, radius, side)
-        elif fruit_type == "orange":
-            draw_orange_half(surface, x, y, radius, side)
-        elif fruit_type == "pineapple":
-            draw_pineapple_half(surface, x, y, radius, side)
-        elif fruit_type == "banana":
-            draw_banana_half(surface, x, y, radius, side)
-    else:
-        if fruit_type == "watermelon":
-            draw_watermelon(surface, x, y, radius)
-        elif fruit_type == "apple":
-            draw_apple(surface, x, y, radius)
-        elif fruit_type == "orange":
-            draw_orange(surface, x, y, radius)
-        elif fruit_type == "pineapple":
-            draw_pineapple(surface, x, y, radius)
-        elif fruit_type == "banana":
-            draw_banana(surface, x, y, radius)
+    ftype  = fruit_dict.get("type", "")
+    x      = int(fruit_dict.get("x", 0))
+    y      = int(fruit_dict.get("y", 0))
+    radius = int(fruit_dict.get("radius", 35))
+    fn     = FRUIT_DRAW_MAP.get(ftype)
+    if fn:
+        fn(surface, x, y, radius)
 
 
 if __name__ == "__main__":

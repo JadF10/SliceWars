@@ -167,6 +167,26 @@ def run(network_client, screen: Optional[pygame.Surface] = None):
     error_text = ""
     error_color = RED
     error_time = 0
+    accepted = False
+
+    saved_ok = getattr(network_client, "on_message", {}).get(MSG_CONNECT_OK)
+    saved_fail = getattr(network_client, "on_message", {}).get(MSG_CONNECT_FAIL)
+
+    def on_connect_ok(payload, server_time):
+        nonlocal accepted
+        accepted = True
+
+    def on_connect_fail(payload, server_time):
+        nonlocal error_text, error_time
+        reason = ""
+        if isinstance(payload, dict):
+            reason = payload.get("reason", "")
+        error_text = reason or "Connection failed"
+        error_time = time.time()
+
+    if hasattr(network_client, "on"):
+        network_client.on(MSG_CONNECT_OK, on_connect_ok)
+        network_client.on(MSG_CONNECT_FAIL, on_connect_fail)
 
     running = True
     username = ""
@@ -213,7 +233,19 @@ def run(network_client, screen: Optional[pygame.Surface] = None):
                         error_text = f"Connect error: {e}"
                         error_time = time.time()
 
-        # Poll for incoming network messages
+        if accepted:
+            if hasattr(network_client, "on_message"):
+                if saved_ok is None:
+                    network_client.on_message.pop(MSG_CONNECT_OK, None)
+                else:
+                    network_client.on_message[MSG_CONNECT_OK] = saved_ok
+                if saved_fail is None:
+                    network_client.on_message.pop(MSG_CONNECT_FAIL, None)
+                else:
+                    network_client.on_message[MSG_CONNECT_FAIL] = saved_fail
+            return username
+
+        # Poll for incoming network messages, for mock clients used in tests.
         msgs = _poll_messages(network_client)
         for m in msgs:
             mtype = _message_type(m)

@@ -60,7 +60,7 @@ class GestureClassifier:
     than its middle joint (PIP) — pure geometry, no ML required.
     """
 
-    def __init__(self, camera_index: int = 0, smooth_window: int = 3):
+    def __init__(self, camera_index: int = 0, smooth_window: int = 1):
         """
         camera_index   : which webcam to use (0 = default)
         smooth_window  : number of frames to smooth over (reduces jitter)
@@ -74,8 +74,8 @@ class GestureClassifier:
         self.hands       = self.mp_hands.Hands(
             static_image_mode       = False,
             max_num_hands           = 1,
-            min_detection_confidence= 0.7,
-            min_tracking_confidence = 0.5
+            min_detection_confidence= 0.5,
+            min_tracking_confidence = 0.3
         )
 
         # Webcam
