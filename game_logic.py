@@ -21,8 +21,8 @@ LIVES_VERSUS   = 3
 
 SPAWN_INTERVAL_MIN = 0.8     # seconds between fruit spawns
 SPAWN_INTERVAL_MAX = 2.0
-STAR_BASE_CHANCE   = 0.003  # 0.5% per tick
-MEGA_BOMB_CHANCE   = 0.001   # 0.1% per tick
+STAR_BASE_CHANCE   = 0.02    # 2% per tick
+MEGA_BOMB_CHANCE   = 0.005   # 0.5% per tick
 
 SLICE_RADIUS   = 40          # pixels — hit detection radius
 
@@ -81,10 +81,9 @@ class GameRoom:
 
         # Per-player state
         self.scores = {p: 0 for p in players}
-        self.lives  = {p: LIVES_SOLO for p in players}
+        self.lives  = {p: LIVES_VERSUS for p in players}
         self.ready  = {p: False for p in players}
         self.finger = {p: (0, 0, GESTURE_NONE) for p in players}
-        self.start_requested = False
 
         # Items currently in flight
         self.items = {}                    # item_id → Item
@@ -114,12 +113,6 @@ class GameRoom:
 
     def all_ready(self) -> bool:
         return all(self.ready.values())
-
-    def consume_start_request(self) -> bool:
-        if self.start_requested or not self.all_ready():
-            return False
-        self.start_requested = True
-        return True
 
     def add_spectator(self, username: str):
         self.spectators.add(username)
@@ -161,9 +154,7 @@ class GameRoom:
             # Item fell off screen without being sliced
             if item.is_off_screen() and item.alive:
                 item.alive = False
-                if item.type not in (ITEM_BOMB, ITEM_MEGA_BOMB,
-                                     ITEM_STAR_FRUIT, ITEM_MAGNET):
-                    self.on_miss(item)
+                self.on_miss(item)
 
         # Remove dead items
         self.items = {
@@ -179,7 +170,7 @@ class GameRoom:
 
         # Maybe spawn star fruit (server decides unpredictably)
         self.ticks_since_star += 1
-        hunger_bonus = self.ticks_since_star * 0.0002
+        hunger_bonus = self.ticks_since_star * 0.001
         if random.random() < (STAR_BASE_CHANCE + hunger_bonus):
             self.spawn_specific(ITEM_STAR_FRUIT)
             self.ticks_since_star = 0
@@ -237,12 +228,7 @@ class GameRoom:
         Check if this finger position hits any item.
         Returns list of event log strings — Murex signal.
         """
-        nx = x / SCREEN_W if x > 1 else x
-        ny = y / SCREEN_H if y > 1 else y
-        px = nx * SCREEN_W
-        py = ny * SCREEN_H
-
-        self.finger[username] = (nx, ny, gesture)
+        self.finger[username] = (x, y, gesture)
         events = []
 
         if gesture not in (GESTURE_SLICE, GESTURE_DOUBLE_SLICE):
@@ -256,7 +242,7 @@ class GameRoom:
                 continue
 
             # Distance check — hit detection
-            dist = math.sqrt((item.x - px)**2 + (item.y - py)**2)
+            dist = math.sqrt((item.x - x)**2 + (item.y - y)**2)
             if dist > radius:
                 continue
 
@@ -318,14 +304,13 @@ class GameRoom:
                 )
 
         else:
-    # Regular fruit
+            # Regular fruit
             points = ITEM_POINTS.get(item.type, 0)
-            if self.mode == MODE_COOP:
-        # Co-op — add points to ALL players
-                for p in self.players:
-                    self.scores[p] = self.scores.get(p, 0) + points
-            else:
-                self.scores[username] = self.scores.get(username, 0) + points
+            self.scores[username] = self.scores.get(username, 0) + points
+            events.append(
+                f"SLICE_HIT username={username} item_type={item.type} "
+                f"item={item.id} pts={points} score={self.scores[username]} t={ts}"
+            )
 
             # Co-op coordination bonus — if both sliced within 0.3s
             # (simplified: just award the slicer here)
@@ -333,17 +318,18 @@ class GameRoom:
         return events
 
     def on_miss(self, item: Item):
+        """A fruit fell off screen without being sliced — lose a life."""
         if item.type in (ITEM_BOMB, ITEM_MEGA_BOMB,
-                     ITEM_STAR_FRUIT, ITEM_MAGNET):
-            return   # missing these is fine
+                         ITEM_STAR_FRUIT, ITEM_MAGNET):
+            return   # missing a bomb is fine
 
-        if self.mode == MODE_COOP:
-            self.apply_lives("shared", -1)
-        elif self.mode == MODE_VERSUS:
+        # In versus mode, both players lose a life for missed fruits
+        if self.mode == MODE_VERSUS:
             for p in self.players:
                 self.apply_lives(p, -1)
+        elif self.mode == MODE_COOP:
+            self.apply_lives("shared", -1)
         else:
-            # SOLO — only one player
             if self.players:
                 self.apply_lives(self.players[0], -1)
 
@@ -355,11 +341,7 @@ class GameRoom:
             self.lives[key] = max(0, self.lives[key] + delta)
         elif self.mode == MODE_COOP and "shared" in self.lives:
             self.lives["shared"] = max(0, self.lives["shared"] + delta)
-        elif self.mode == MODE_SOLO and self.players:
-        # Solo mode fallback — always apply to the single player
-            player = self.players[0]
-            if player in self.lives:
-                self.lives[player] = max(0, self.lives[player] + delta)
+
     def get_lives(self, username: str) -> int:
         if self.mode == MODE_COOP:
             return self.lives.get("shared", 0)
@@ -375,11 +357,9 @@ class GameRoom:
     #  Game over
     # ─────────────────────────────────────────
     def is_game_over(self) -> bool:
-         if not self.players:
-            return False
-         if self.mode == MODE_COOP:
-            return self.lives.get("shared", 1) <= 0
-         return all(self.lives.get(p, 1) <= 0 for p in self.players)
+        if self.mode == MODE_COOP:
+            return self.lives.get("shared", 0) <= 0
+        return any(self.lives.get(p, 0) <= 0 for p in self.players)
 
     def finish(self):
         """Determine winner and end the room."""
@@ -388,8 +368,6 @@ class GameRoom:
 
         state = self.get_state()
         state["winner"] = winner
-        state["players"] = self.players
-        state["leaderboard"] = self.server.leaderboard.get_top()
 
         msg = build_message(MSG_GAME_OVER, state)
         self.server.broadcast_room(self.room_id, msg)
@@ -406,23 +384,13 @@ class GameRoom:
     # ─────────────────────────────────────────
     #  State broadcast
     # ─────────────────────────────────────────
-    def _state_lives(self) -> dict:
-        if self.mode == MODE_COOP:
-            return {"shared": self.lives.get("shared", LIVES_COOP)}
-
-        default_lives = LIVES_SOLO if self.mode == MODE_SOLO else LIVES_VERSUS
-        return {
-            player: self.lives.get(player, default_lives)
-            for player in self.players
-        }
-
     def get_state(self) -> dict:
         """Package full game state for broadcasting — Murex signal."""
         return {
             "room_id"    : self.room_id,
             "mode"       : self.mode,
             "scores"     : self.scores,
-            "lives"      : self._state_lives(),
+            "lives"      : self.lives,
             "items"      : [i.to_dict() for i in self.items.values()],
             "fingers"    : {
                 p: {"x": fx, "y": fy, "gesture": fg}
@@ -433,6 +401,5 @@ class GameRoom:
         }
 
     def broadcast_state(self):
-        print(f"Broadcasting state to room {self.room_id}, items={len(self.items)}")
         msg = build_message(MSG_GAME_STATE, self.get_state())
         self.server.broadcast_room(self.room_id, msg)

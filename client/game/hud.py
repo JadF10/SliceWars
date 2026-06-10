@@ -18,26 +18,37 @@ class HUD:
         self.mono_font = pygame.font.SysFont("Consolas", 18)
 
     def draw(self, surface: pygame.Surface, game_state: dict, username: str, latency_ms: int):
-        scores = game_state.get("scores", {})
-        lives = game_state.get("lives", {})
-        mode = game_state.get("mode", MODE_SOLO)
-        combo = game_state.get("combo", 1)
+        scores  = game_state.get("scores", {})
+        lives   = game_state.get("lives", {})
+        mode    = game_state.get("mode", MODE_SOLO)
+        combo   = game_state.get("combo", 1)
         gesture = game_state.get("gesture", "NONE")
 
-        current_score = scores.get(username, 0)
-        current_lives = lives.get(username, lives.get("shared", 0))
-        current_lives = clamp_lives(current_lives)
+        if mode == MODE_COOP:
+            # Co-op — show combined score and shared lives
+            combined_score = sum(scores.values())
+            shared_lives   = lives.get("shared", list(lives.values())[0] if lives else 0)
+            shared_lives   = clamp_lives(shared_lives)
+            self._draw_score(surface, "Team", combined_score, top_left=True)
+            self._draw_lives(surface, shared_lives, top_left=True)
 
-        self._draw_score(surface, "You", current_score, top_left=True)
-        self._draw_lives(surface, current_lives, top_left=True)
+        else:
+            # Solo or Versus — show personal score
+            current_score = scores.get(username, 0)
+            current_lives = lives.get(username, lives.get("shared", 0))
+            current_lives = clamp_lives(current_lives)
+            self._draw_score(surface, "You", current_score, top_left=True)
+            self._draw_lives(surface, current_lives, top_left=True)
 
-        if mode == MODE_VERSUS:
-            opponent_name = next((name for name in scores.keys() if name != username), "Opponent")
-            opponent_score = scores.get(opponent_name, 0)
-            opponent_lives = lives.get(opponent_name, 0)
-            opponent_lives = clamp_lives(opponent_lives)
-            self._draw_score(surface, opponent_name, opponent_score, top_left=False)
-            self._draw_lives(surface, opponent_lives, top_left=False)
+            if mode == MODE_VERSUS:
+                opponent_name  = next(
+                    (name for name in scores.keys() if name != username),
+                    "Opponent"
+                )
+                opponent_score = scores.get(opponent_name, 0)
+                opponent_lives = clamp_lives(lives.get(opponent_name, 0))
+                self._draw_score(surface, opponent_name, opponent_score, top_left=False)
+                self._draw_lives(surface, opponent_lives, top_left=False)
 
         if combo > 1:
             draw_combo(surface, combo)
