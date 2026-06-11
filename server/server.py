@@ -491,7 +491,8 @@ class SliceWarsServer:
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_PORT
-    server = SliceWarsServer(DEFAULT_HOST, port)
+    host = os.environ.get("HOST", "0.0.0.0")
+    server = SliceWarsServer(host, port)
     try:
         server.start()
     except KeyboardInterrupt:
