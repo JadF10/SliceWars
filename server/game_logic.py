@@ -161,9 +161,6 @@ class GameRoom:
             # Item fell off screen without being sliced
             if item.is_off_screen() and item.alive:
                 item.alive = False
-                if item.type not in (ITEM_BOMB, ITEM_MEGA_BOMB,
-                                     ITEM_STAR_FRUIT, ITEM_MAGNET):
-                    self.on_miss(item)
 
         # Remove dead items
         self.items = {
@@ -333,19 +330,8 @@ class GameRoom:
         return events
 
     def on_miss(self, item: Item):
-        if item.type in (ITEM_BOMB, ITEM_MEGA_BOMB,
-                     ITEM_STAR_FRUIT, ITEM_MAGNET):
-            return   # missing these is fine
-
-        if self.mode == MODE_COOP:
-            self.apply_lives("shared", -1)
-        elif self.mode == MODE_VERSUS:
-            for p in self.players:
-                self.apply_lives(p, -1)
-        else:
-            # SOLO — only one player
-            if self.players:
-                self.apply_lives(self.players[0], -1)
+        """A missed item falls away without changing lives."""
+        return
 
     # ─────────────────────────────────────────
     #  Lives helpers
